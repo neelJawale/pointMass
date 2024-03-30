@@ -1,5 +1,5 @@
-
 import gym, gym.utils, gym.utils.seeding
+import gym_robotics
 import pybullet as p 
 import numpy as np
 import pybullet_data
@@ -12,13 +12,10 @@ import math
 
 GUI = False
 viewMatrix = p.computeViewMatrixFromYawPitchRoll(cameraTargetPosition = [0,0,0], distance = 6, yaw = 0, pitch = -90, roll = 0, upAxisIndex = 2)
-
-
 projectionMatrix = p.computeProjectionMatrixFOV(fov = 50,aspect = 1,nearVal = 0.01,farVal = 10)
 
-
-class pointMassEnv(gym.GoalEnv):
-
+# for rwik - install gym_robotics to be able to inherit from the goalEnv class
+class pointMassEnv(gym_robotics.GoalEnv):
 
 		metadata = {
 		'render.modes': ['human', 'rgb_array'],
@@ -27,7 +24,6 @@ class pointMassEnv(gym.GoalEnv):
 
 		def __init__(self, render = False, num_objects = 0, sparse = True, TARG_LIMIT = 2, sparse_rew_thresh=0.3, pointMaze=False, deterministic_pos=False):
 			self.num_objects = num_objects
-
 			action_dim = 2
 			obs_dim = 4
 			self.ENVIRONMENT_BOUNDS = 2.5# LENGTH 6
@@ -52,8 +48,6 @@ class pointMassEnv(gym.GoalEnv):
 				controllable_achieved_goal = spaces.Box( -self.ENVIRONMENT_BOUNDS*np.ones([action_dim]),  self.ENVIRONMENT_BOUNDS*np.ones([action_dim])),
 				full_positional_state = spaces.Box( -self.ENVIRONMENT_BOUNDS*np.ones([action_dim+2*self.num_objects]),  self.ENVIRONMENT_BOUNDS*np.ones([action_dim+2*self.num_objects]))
         	))
-
-
 			
 			self.isRender = False
 			self.GUI_ACTIVE = False
@@ -77,13 +71,12 @@ class pointMassEnv(gym.GoalEnv):
 			if sparse:
 				self.set_sparse_reward()
 
-		def set_state_representation(self, autoencoder):
-			self.state_representation = autoencoder
-			if self.state_representation is not None:
-				self.episodes = np.load('collected_data/120000HER2_pointMassObject-v0_Hidden_128l_2episodes.npz', allow_pickle=True)[
-					'episodes']
+		# def set_state_representation(self, autoencoder):
+		# 	self.state_representation = autoencoder
+		# 	if self.state_representation is not None:
+		# 		self.episodes = np.load('some_data.npz', allow_pickle=True)[
+		# 			'episodes']
 			
-
 		def crop(self, num, lim):
 				if num >= 0 and num < lim:
 					num = lim
@@ -174,7 +167,6 @@ class pointMassEnv(gym.GoalEnv):
 					self._p.resetBaseVelocity(obj, [obs_vel_x, obs_vel_y, 0])
 					starting_index += 4 # go the the next object in the observation
 
-
 		def initialize_actor_pos(self,o):
 			x, y, x_vel, y_vel = o[0], o[1], o[2], o[3]
 			self._p.resetBasePositionAndOrientation(self.mass, [x, y, -0.1], [0, 0, 0, 1])
@@ -190,10 +182,7 @@ class pointMassEnv(gym.GoalEnv):
 			if self.num_objects > 0:
 				self.reset_object_pos(o, extra_info)
 
-
-
 		def visualise_sub_goal(self, sub_goal, sub_goal_state = 'achieved_goal'):
-
 			# in the sub_goal case we either only  have the positional info, or we have the full state positional info.
 			#print(sub_goal)
 			index = 0
@@ -305,11 +294,10 @@ class pointMassEnv(gym.GoalEnv):
 				)
 
 				rgb_array = np.array(px, dtype=np.uint8)
-				rgb_array = np.reshape(rgb_array, (128, 128, 4))
+				# rgb_array = np.reshape(rgb_array, (128, 128, 4))
+				rgb_array = np.reshape(rgb_array, (48,48,4))
+				# return_dict["image"] = rgb_array[:, :3]
 				return_dict["image"] = rgb_array[:, :, :3]
-
-
-
 			return return_dict
 			
 
@@ -322,7 +310,6 @@ class pointMassEnv(gym.GoalEnv):
 			
 		# 	return (velocity - self.goal_velocity)
 
-
 		def activate_movable_goal(self):
 			self.movable_goal = True
 
@@ -330,9 +317,8 @@ class pointMassEnv(gym.GoalEnv):
 			self.roving_goal = True
 
 		def compute_reward(self, achieved_goal, desired_goal, info = None):
-			
+			# ppo reward can be defined here for ppo+mpc demo 
 			# reward given if new pos is closer than old
-
 			current_distance = np.linalg.norm(achieved_goal - desired_goal, axis=0)
 
 			position_reward = -1000*(current_distance - self.last_target_distance)
@@ -387,21 +373,16 @@ class pointMassEnv(gym.GoalEnv):
 
 			# force = action*10
 			# print(force)
-			# self._p.applyExternalForce(self.mass, -1, force, current_pos, flags=self._p.WORLD_FRAME)
+			# self._p.applyExternalForce(self.mass, -1, action, current_pos, flags=self._p.WORLD_FRAME)
 			#
 			for i in range(0,20):
-				#self._p.applyExternalForce(self.mass, -1, force, current_pos, flags=self._p.WORLD_FRAME)
+				self._p.applyExternalForce(self.mass, -1, action, current_pos, flags=self._p.WORLD_FRAME)
 				self._p.stepSimulation()
 
-
 			obs = self.calc_state()
-
 			r = self.compute_reward(obs['achieved_goal'], obs['desired_goal'])
-
 			current_distance = self.calc_target_distance(obs['achieved_goal'], self.goal)
-
 			if self.movable_goal:
-
 				if r ==  0:
 					self.reset_goal_pos()
 
@@ -514,13 +495,7 @@ class pointMassEnv(gym.GoalEnv):
 					colcubeId = self._p.createCollisionShape(p.GEOM_BOX, halfExtents=[5, 5, 0.1])
 					visplaneId = self._p.createVisualShape(p.GEOM_BOX, halfExtents=[5, 5, 0.1],rgbaColor=[1,1,1,1])
 					plane = self._p.createMultiBody(0, colcubeId, visplaneId, [0, 0, -0.2])
-
 					#self._p.loadSDF(os.path.join(urdfRoot, "plane_stadium.sdf"))
-
-
-
-
-
 				self._p.resetBasePositionAndOrientation(self.mass, [0, 0,0.6], [0,0,0,1])
 				self.reset_goal_pos()
 
@@ -541,13 +516,7 @@ class pointMassEnv(gym.GoalEnv):
 				self.initialize_actor_pos([x,y,x_vel,y_vel])
 				if self.num_objects > 0:
 					self.reset_object_pos()
-
-
 				#self.last_velocity_distance = self.calc_velocity_distance()
-
-
-
-
 				#Instantiate some obstacles.
 				#self.instaniate_obstacles()
 			obs = self.calc_state()
@@ -560,7 +529,6 @@ class pointMassEnv(gym.GoalEnv):
 			self.TARG_MIN = 1.5
 			self.opposite_goal = True
 
-
 		def render(self, mode='human'):
 
 			if (mode=="human"):
@@ -569,21 +537,15 @@ class pointMassEnv(gym.GoalEnv):
 			if mode == 'rgb_array':
 				raise NotImplementedError
 
-
 		def close(self):
 			print('closing')
 			self._p.disconnect()
-
 
 		def _seed(self, seed=None):
 			print('seeding')
 			self.np_random, seed = gym.utils.seeding.np_random(seed)
 
 			return [seed]
-
-
-
-
 
 # a version where reward is determined by the obstacle. 
 # need a sub class so we can load it as a openai gym env.
@@ -629,22 +591,15 @@ def main(**kwargs):
 	cameraYaw = 35
 	cameraPitch = -35
 
-	env = pointMassEnvMaze()
+	env = pointMassEnv()
 	env.render(mode = 'human')
 	obs = env.reset()['observation']
-
-	# objects = env._p.loadMJCF("/Users/francisdouglas/bullet3/data/mjcf/sphere.xml")
-	# sphere = objects[0]
-	# env._p.resetBasePositionAndOrientation(sphere, [0, 0, 1], [0, 0, 0, 1])
-	# env._p.changeDynamics(sphere, -1, linearDamping=0.9)
-	# env._p.changeVisualShape(sphere, -1, rgbaColor=[1, 0, 0, 1])
 	forward = 0
 	turn = 0
-
 	forwardVec = [2, 0, 0]
-	cameraDistance = 2
-	cameraYaw = 35
-	cameraPitch = -65
+	cameraDistance = -10 #2
+	cameraYaw = 0 #35
+	cameraPitch = 10 #-65
 	steps = 0
 	while steps<3000:
 
@@ -684,7 +639,8 @@ def main(**kwargs):
 		# 	env._p.applyExternalForce(sphere, -1, force, spherePos, flags=env._p.WORLD_FRAME)
 		#
 		# env._p.stepSimulation()
-		time.sleep(3. / 240.)
+		# time.sleep(3. / 240.)
+		time.sleep(0.0000002)
 
 		o,r,_,_ = env.step(np.array(force))
 		print(o['observation'][0:2])#print(r)
